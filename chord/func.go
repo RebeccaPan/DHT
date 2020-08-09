@@ -42,7 +42,7 @@ func (n *Node) getSuc() EdgeType {
 
 func (n *Node) getWorkingSuc() EdgeType {
 	for i := 1; i < MaxM; i++ {
-		if n.ping(n.Successors[i].IP) {
+		if n.Ping(n.Successors[i].IP) {
 			return n.Successors[i]
 		}
 	}
@@ -114,7 +114,7 @@ func (n *Node) findSuc(req *FindType, ans *EdgeType) error {
 
 func (n *Node) closestPreNode(reqID *big.Int) EdgeType {
 	for i := MaxM; i >= 1; i-- {
-		if n.FingerTable[i].ID != nil && n.ping(n.FingerTable[i].IP) && between(n.ID, n.FingerTable[i].ID, reqID, true) {
+		if n.FingerTable[i].ID != nil && n.Ping(n.FingerTable[i].IP) && between(n.ID, n.FingerTable[i].ID, reqID, true) {
 			return n.FingerTable[i]
 		}
 	}
@@ -193,7 +193,7 @@ func (n *Node) deleteKeyBackup(key string, _ int) error {
 }
 
 // when Join()
-func (n *Node) joinSucOp(suc EdgeType, _ int) error {
+func (n *Node) joinSucRemove(suc EdgeType, _ int) error {
 	n.Data.Lock.Lock()
 	var toDel []string
 	for key := range n.Data.Map {
@@ -277,7 +277,7 @@ func (n *Node) quitMoveDataPre(req *MapWithLock, _ int) error {
 	return nil
 }
 
-func (n *Node) ping(IP string) bool {
+func (n *Node) Ping(IP string) bool {
 	if IP == "" {
 		return false
 	}
@@ -315,7 +315,7 @@ func (n *Node) fixSuc() error {
 	index := 1
 	var found = false
 	for index = 1; index <= MaxM; index++ {
-		if n.ping(n.Successors[index].IP) {
+		if n.Ping(n.Successors[index].IP) {
 			found = true
 			break
 		}
@@ -389,7 +389,7 @@ func (n *Node) fixFinger() {
 }
 
 func (n *Node) checkPre() bool {
-	if !n.ping(n.Predecessor.IP) {
+	if !n.Ping(n.Predecessor.IP) {
 		n.Predecessor = nil
 		return false
 	}

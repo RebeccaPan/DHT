@@ -68,7 +68,7 @@ func (n *Node) stabilize() {
 		// Todo: what to do when err or pre cannot be pinged?
 	}
 
-	if errCall == nil && n.ping(pre.IP) {
+	if errCall == nil && n.Ping(pre.IP) {
 		n.sLock.Lock()
 		if between(n.ID, pre.ID, n.Successors[1].ID, false) {
 			n.Successors[1] = pre
@@ -114,7 +114,7 @@ func (n *Node) notify(pre *EdgeType, _ *int) error {
 			_ = client.Close()
 		}()
 		preMap := make(map[string]string)
-		err = client.Call("Node.getKVMap", ReqZero, &preMap)
+		err = client.Call("Node.getDataMap", ReqZero, &preMap)
 		n.backup.Lock.Lock()
 		n.backup.Map = preMap
 		n.backup.Lock.Unlock()
