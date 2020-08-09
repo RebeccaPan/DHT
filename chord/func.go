@@ -14,6 +14,16 @@ func hash(str string) *big.Int {
 	return new(big.Int).SetBytes(hash.Sum(nil))
 }
 
+// calc n + 2^next
+func jump(n *big.Int, next int) *big.Int {
+	var two = big.NewInt(2)
+	var hashMod = new(big.Int).Exp(two, big.NewInt(sha1.Size*8), nil)
+
+	pow := new(big.Int).Exp(two, big.NewInt(int64(next)), nil)
+	ans := new(big.Int).Add(n, pow)
+	return new(big.Int).Mod(ans, hashMod)
+}
+
 func between(left, x, right *big.Int, equalRight bool) bool {
 	if right.Cmp(x) == 0 {
 		return equalRight
@@ -64,13 +74,50 @@ func (n *Node) getSucList(_ int, ret *[MaxM + 1]EdgeType) error {
 	return nil
 }
 
-func (n *Node) findSuc(req *FindType, suc *EdgeType) error {
-	// Todo: findSuc
+func (n *Node) findSuc(req *FindType, ans *EdgeType) error {
+	req.cnt += 1
+	if req.cnt > MaxReqTimes {
+		return errors.New("func.go, findSuc(): not found when looking up")
+	}
+	suc := n.getWorkingSuc()
+	if suc.IP == "" {
+		return errors.New("func.go, findSuc(): cannot get working suc")
+	}
+	if req.ID.Cmp(n.ID) == 0 || suc.ID.Cmp(n.ID) == 0 {
+		*ans = EdgeType{n.IP, new(big.Int).Set(n.ID)}
+		return nil
+	}
+	if between(n.ID, req.ID, suc.ID, true) {
+		*ans = EdgeType{suc.IP, new(big.Int).Set(suc.ID)}
+		return nil
+	}
+	nxt := n.closestPreNode(req.ID)
+	if nxt.IP == "" {
+		return errors.New("func.go, findSuc(): cannot find closest pre node")
+	}
+	client, err := rpc.Dial("tcp", nxt.IP)
+	if err == nil {
+		defer func() {
+			_ = client.Close()
+		}()
+	}
+	if err != nil {
+		time.Sleep(1000 * time.Millisecond)
+		return n.findSuc(req, ans)
+	}
+	err = client.Call("Node.findSuc", req, ans)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func (n *Node) closestPreNode(curID *big.Int) EdgeType {
-	// Todo: closestPreNode
+func (n *Node) closestPreNode(reqID *big.Int) EdgeType {
+	for i := MaxM; i >= 1; i-- {
+		if n.FingerTable[i].ID != nil && n.ping(n.FingerTable[i].IP) && between(n.ID, n.FingerTable[i].ID, reqID, true) {
+			return n.FingerTable[i]
+		}
+	}
 	return EdgeType{"", nil}
 }
 
@@ -261,21 +308,85 @@ func (n *Node) ping(IP string) bool {
 }
 
 func (n *Node) fixSuc() error {
-	// Todo: fixSuc()
+	if n.Successors[1].IP == n.IP { // only one node on chord
+		return nil
+	}
+	n.sLock.Lock()
+	index := 1
+	var found = false
+	for index = 1; index <= MaxM; index++ {
+		if n.ping(n.Successors[index].IP) {
+			found = true
+			break
+		}
+	}
+	if !found || index == 1 {
+		n.sLock.Unlock()
+		return errors.New("func.go, fixSuc(): no working suc found")
+	}
+	n.Successors[1] = n.Successors[index]
+	n.sLock.Unlock()
+
+	client, err := rpc.Dial("tcp", n.Successors[1].IP)
+	if err == nil {
+		defer func() {
+			_ = client.Close()
+		}()
+	}
+	if err != nil {
+		return err
+	}
+	var sucList [MaxM + 1]EdgeType
+	err = client.Call("Node.getSucList", ReqZero, &sucList)
+	if err != nil {
+		return err
+	}
+	n.sLock.Lock()
+	for i := 2; i < MaxM; i++ {
+		n.Successors[i] = sucList[i-1]
+	}
+	n.sLock.Unlock()
 	return nil
 }
 
-func (n *Node) fixFinger() error {
-	// Todo: fixFinger()
-	return nil
-}
+func (n *Node) fixFinger() {
+	n.next = 1
+	var find FindType
+	for n.Connected {
+		if n.Successors[1].IP != n.FingerTable[1].IP || n.Successors[1].ID != n.FingerTable[1].ID {
+			n.next = 1
+		}
+		for i := 0; i < MaxReqTimes; i++ {
+			find.ID = jump(n.ID, n.next)
+			find.cnt = 0
+			err := n.findSuc(&find, &n.FingerTable[n.next])
+			if err != nil {
+				time.Sleep(503 * time.Millisecond)
+			} else {
+				break
+			}
+		}
+		cur := n.FingerTable[n.next]
+		n.next++
+		if n.next > MaxM {
+			n.next = 1
+		} else {
+			for {
+				if !between(n.ID, jump(n.ID, n.next), cur.ID, true) {
+					break
+				}
+				n.FingerTable[n.next] = EdgeType{cur.IP, new(big.Int).Set(cur.ID)}
+				n.next++
+				if n.next > MaxM {
+					n.next = 1
+					break
+				}
+			}
+		}
+		time.Sleep(233 * time.Millisecond)
+	}
 
-//n.fix_finger()
-//n.finger[next]  = n.find_succ(n.id + 2next)	next = next + 1
-//if next > 159
-//next = 0
-//n.finger is  a array with length of 160, and here we use C-Style indexing
-//find_succ() is a function that find which node the specific key belonged to.
+}
 
 func (n *Node) checkPre() bool {
 	if !n.ping(n.Predecessor.IP) {
@@ -284,9 +395,3 @@ func (n *Node) checkPre() bool {
 	}
 	return true
 }
-
-//n.check_predecessor()
-//if n.pre is failed
-//n.pre = nil
-
-//we can use function like ping to check whether the predecessor is failed

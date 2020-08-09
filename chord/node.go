@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	MaxM        = 150
+	MaxM        = 160
 	ReqZero     = 0
 	MaxReqTimes = 10
 )
@@ -39,6 +39,7 @@ type Node struct {
 	Data        MapWithLock
 	backup      MapWithLock
 	Connected   bool
+	next        int
 }
 
 type KVPair struct {
@@ -276,9 +277,9 @@ func (n *Node) Join(IP string) bool {
 	if err != nil {
 		return false
 	}
-	//go n.stabilize()
-	//go n.fixFinger()
-	//go n.checkPre()
+	go n.stabilize()
+	go n.fixFinger()
+	go n.checkPre()
 	n.Connected = true
 	return true
 }
