@@ -15,12 +15,12 @@ func hash(str string) *big.Int {
 	return new(big.Int).SetBytes(hash.Sum(nil))
 }
 
-// calc n + 2^next
-func jump(n *big.Int, next int) *big.Int {
-	var two = big.NewInt(2)
-	var hashMod = new(big.Int).Exp(two, big.NewInt(sha1.Size*8), nil)
+var two = big.NewInt(2)
+var hashMod = new(big.Int).Exp(two, big.NewInt(MaxM), nil)
 
-	pow := new(big.Int).Exp(two, big.NewInt(int64(next)), nil)
+// calc n + 2^(next-1), next = 1, 2, ...
+func jump(n *big.Int, next int) *big.Int {
+	pow := new(big.Int).Exp(two, big.NewInt(int64(next-1)), nil)
 	ans := new(big.Int).Add(n, pow)
 	return new(big.Int).Mod(ans, hashMod)
 }
@@ -341,16 +341,19 @@ func (n *Node) FixSuc() error {
 		return nil
 	}
 	n.sLock.Lock()
-	index := 1
+	var index int
 	var found = false
-	for index = 1; index <= MaxM; index++ {
+	for index = 1; index < MaxM; index++ {
 		if n.Ping(n.Successors[index].IP) {
 			found = true
 			break
 		}
 	}
-	// Todo
-	if !found || index == 1 {
+	if index == 1 {
+		n.sLock.Unlock()
+		return nil
+	}
+	if !found {
 		n.sLock.Unlock()
 		return errors.New("func.go, fixSuc(): no working suc found")
 	}
@@ -381,40 +384,12 @@ func (n *Node) FixSuc() error {
 
 // go func
 func (n *Node) FixFinger() {
-	n.next = 1
-	var find FindType
 	for n.Connected {
-		if n.Successors[1].IP != n.FingerTable[1].IP || n.Successors[1].ID != n.FingerTable[1].ID {
-			n.next = 1
+		err := n.FindSuc(&FindType{jump(n.ID, n.next), 0}, &n.FingerTable[n.next])
+		if err == nil {
+			n.next = (n.next + 1) % MaxM
 		}
-		for i := 0; i < MaxReqTimes; i++ {
-			find.ID = jump(n.ID, n.next)
-			find.cnt = 0
-			err := n.FindSuc(&find, &n.FingerTable[n.next])
-			if err != nil {
-				time.Sleep(503 * time.Millisecond)
-			} else {
-				break
-			}
-		}
-		cur := n.FingerTable[n.next]
-		n.next++
-		if n.next > MaxM {
-			n.next = 1
-		} else {
-			for {
-				if !between(n.ID, jump(n.ID, n.next), cur.ID, true) {
-					break
-				}
-				n.FingerTable[n.next] = EdgeType{cur.IP, new(big.Int).Set(cur.ID)}
-				n.next++
-				if n.next > MaxM {
-					n.next = 1
-					break
-				}
-			}
-		}
-		time.Sleep(233 * time.Millisecond)
+		time.Sleep(103 * time.Millisecond)
 	}
 
 }

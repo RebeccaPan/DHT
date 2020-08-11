@@ -139,6 +139,7 @@ func (n *Node) Init(str string) {
 	n.Predecessor = nil
 	n.Data.Map = make(map[string]string)
 	n.backup.Map = make(map[string]string)
+	n.next = 1
 }
 
 func (n *Node) Create() {
@@ -228,6 +229,12 @@ func (n *Node) Dump() {
 	}
 	fmt.Println("suc1: ", n.Successors[1].IP, "self < suc1?", n.ID.Cmp(n.Successors[1].ID))
 	fmt.Println("suc2: ", n.Successors[2].IP, "suc1 < suc2?", n.Successors[1].ID.Cmp(n.Successors[2].ID))
+	fmt.Println("finger0: ", n.FingerTable[0].IP)
+	fmt.Println("finger1: ", n.FingerTable[1].IP)
+	fmt.Println("finger2: ", n.FingerTable[2].IP)
+	fmt.Println("finger3: ", n.FingerTable[3].IP)
+	fmt.Println("finger4: ", n.FingerTable[4].IP)
+	fmt.Println("finger5: ", n.FingerTable[5].IP)
 	fmt.Println("is on:", n.Connected)
 }
 
