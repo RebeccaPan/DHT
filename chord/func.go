@@ -66,10 +66,6 @@ func LocAddr() string {
 	return str
 }
 
-func (n *Node) GetSuc() EdgeType {
-	return n.Successors[1]
-}
-
 func (n *Node) GetWorkingSuc() EdgeType {
 	for i := 1; i < MaxM; i++ {
 		if n.Ping(n.Successors[i].IP) {
@@ -110,11 +106,9 @@ func (n *Node) FindSuc(req *FindType, ans *EdgeType) error {
 		return errors.New("func.go, FindSuc(): not found when looking up")
 	}
 	_ = n.FixSuc()
-	//suc := n.GetWorkingSuc()
-	suc := n.Successors[1]
+	suc := n.GetWorkingSuc()
 	if suc.IP == "" {
-		return errors.New("func.go, FindSuc(): cannot get suc")
-	//	return errors.New("func.go, FindSuc(): cannot get working suc")
+		return errors.New("func.go, FindSuc(): cannot get working suc")
 	}
 	if req.ID.Cmp(n.ID) == 0 || suc.ID.Cmp(n.ID) == 0 {
 		*ans = EdgeType{n.IP, new(big.Int).Set(n.ID)}
@@ -166,15 +160,12 @@ func (n *Node) InsertVal(req KVPair, done *bool) error {
 	n.Data.Map[req.Key] = req.Val
 	n.Data.Lock.Unlock()
 
-	err := n.FixSuc()
-	if err != nil {
-		return err
-	}
+	_ = n.FixSuc()
 	client, err := rpc.Dial("tcp", n.GetWorkingSuc().IP)
 	if err != nil {
 		return err
 	}
-	err = client.Call("NetNode.putValBackup", req, done)
+	err = client.Call("NetNode.PutValBackup", req, done)
 	if err != nil {
 		return err
 	}
@@ -213,7 +204,7 @@ func (n *Node) DeleteKey(key string, _ *int) error {
 	if err != nil {
 		return err
 	}
-	err = client.Call("NetNode.deleteKeyBackup", key, nil)
+	err = client.Call("NetNode.DeleteKeyBackup", key, nil)
 	if err != nil {
 		return err
 	}
@@ -259,7 +250,7 @@ func (n *Node) QuitFixPreSucList(suc EdgeType, _ *int) error {
 		return err
 	}
 	var sucList [MaxM + 1]EdgeType
-	err = client.Call("NetNode.getSucList", ReqZero, &sucList)
+	err = client.Call("NetNode.GetSucList", ReqZero, &sucList)
 	if err != nil {
 		return err
 	}
@@ -295,7 +286,7 @@ func (n *Node) QuitMoveData(req *MapWithLock, _ *int) error {
 	req.Lock.Lock()
 	for key, val := range req.Map {
 		n.Data.Map[key] = val
-		err = client.Call("NetNode.putValBackup", KVPair{key, val}, nil)
+		err = client.Call("NetNode.PutValBackup", KVPair{key, val}, nil)
 		if err != nil {
 			n.Data.Lock.Unlock()
 			req.Lock.Unlock()
@@ -329,6 +320,7 @@ func (n *Node) Ping(IP string) bool {
 			} else {
 				ch <- false
 			}
+			// Todo: more to do with recover() ??
 		}()
 		select {
 		case done = <-ch:
@@ -357,6 +349,7 @@ func (n *Node) FixSuc() error {
 			break
 		}
 	}
+	// Todo
 	if !found || index == 1 {
 		n.sLock.Unlock()
 		return errors.New("func.go, fixSuc(): no working suc found")
@@ -374,7 +367,7 @@ func (n *Node) FixSuc() error {
 		return err
 	}
 	var sucList [MaxM + 1]EdgeType
-	err = client.Call("NetNode.getSucList", ReqZero, &sucList)
+	err = client.Call("NetNode.GetSucList", ReqZero, &sucList)
 	if err != nil {
 		return err
 	}
@@ -441,7 +434,7 @@ func (n *Node) CheckPre() {
 				for key, val := range n.backup.Map {
 					n.Data.Map[key] = val
 					if n.IP != n.Successors[1].IP {
-						err = client.Call("NetNode.putValBackup", KVPair{key, val}, nil)
+						err = client.Call("NetNode.PutValBackup", KVPair{key, val}, nil)
 						if err != nil {
 							break
 						}

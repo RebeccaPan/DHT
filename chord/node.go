@@ -12,7 +12,7 @@ import (
 const (
 	MaxM        = 160
 	ReqZero     = 0
-	MaxReqTimes = 10
+	MaxReqTimes = 5
 )
 
 type EdgeType struct {
@@ -62,9 +62,9 @@ func (n *Node) Stabilize_() {
 		return
 	}
 	client, err := rpc.Dial("tcp", suc.IP)
-	if err == nil {
-		defer func() {_ = client.Close()}()
-	}
+	/*if err == nil {
+		defer func() {_ = client.Close()}()// WARNING no client causing panic
+	}*/
 	if err != nil || client == nil { // Dial failed
 		return
 	}
@@ -103,6 +103,7 @@ func (n *Node) Stabilize_() {
 		n.Successors[i] = sucList[i-1]
 	}
 	n.sLock.Unlock()
+	_ = client.Close()
 }
 
 func (n *Node) Notify(pre *EdgeType, _ *int) error {
@@ -132,7 +133,7 @@ func (n *Node) Notify(pre *EdgeType, _ *int) error {
 func (n *Node) Init(str string) {
 	// All to do when init
 	n.IP = LocAddr() + ":" + str
-	n.ID = hash(str)
+	n.ID = hash(n.IP)
 	//n.FingerTable = nil
 	//n.Successors  = nil
 	n.Predecessor = nil
@@ -219,14 +220,14 @@ func (n *Node) Delete(key string) bool {
 
 func (n *Node) Dump() {
 	fmt.Println("IP:   ", n.IP)
-	//fmt.Println("ID:   ", n.ID)
+	fmt.Println("ID:   ", n.ID)
 	if n.Predecessor != nil {
-		fmt.Println("pre:  ", n.Predecessor.IP)
+		fmt.Println("pre:  ", n.Predecessor.IP, "pre < self?", n.Predecessor.ID.Cmp(n.ID))
 	} else {
 		fmt.Println("pre:  nil")
 	}
-	fmt.Println("suc1: ", n.Successors[1].IP)
-	fmt.Println("suc2: ", n.Successors[2].IP)
+	fmt.Println("suc1: ", n.Successors[1].IP, "self < suc1?", n.ID.Cmp(n.Successors[1].ID))
+	fmt.Println("suc2: ", n.Successors[2].IP, "suc1 < suc2?", n.Successors[1].ID.Cmp(n.Successors[2].ID))
 	fmt.Println("is on:", n.Connected)
 }
 
