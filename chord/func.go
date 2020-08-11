@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"errors"
 	"math/big"
+	"net"
 	"net/rpc"
 	"time"
 )
@@ -30,17 +31,46 @@ func between(left, x, right *big.Int, equalRight bool) bool {
 	} else {
 		if left.Cmp(right) < 0 {
 			return left.Cmp(x) < 0 && x.Cmp(right) < 0
-		} else {
+		} else { // take the chord into consideration
 			return left.Cmp(x) < 0 || x.Cmp(right) < 0
 		}
 	}
 }
 
-func (n *Node) getSuc() EdgeType {
+func LocAddr() string {
+	var str string
+	Itf, err := net.Interfaces()
+	if err != nil {
+		panic("net.Interfaces not found")
+	}
+	// find the first non-loopback interface with an IP address
+	for _, elt := range Itf {
+		if elt.Flags&net.FlagLoopback == 0 && elt.Flags&net.FlagUp != 0 {
+			addrS, err := elt.Addrs()
+			if err != nil {
+				panic("failure to get addresses for net.Interfaces")
+			}
+			for _, addr := range addrS {
+				if ipNet, ok := addr.(*net.IPNet); ok {
+					if ip4 := ipNet.IP.To4(); len(ip4) == net.IPv4len {
+						str = ip4.String()
+						break
+					}
+				}
+			}
+		}
+	}
+	if str == "" {
+		panic("init: failed to find non-loopback interface with valid address on this node")
+	}
+	return str
+}
+
+func (n *Node) GetSuc() EdgeType {
 	return n.Successors[1]
 }
 
-func (n *Node) getWorkingSuc() EdgeType {
+func (n *Node) GetWorkingSuc() EdgeType {
 	for i := 1; i < MaxM; i++ {
 		if n.Ping(n.Successors[i].IP) {
 			return n.Successors[i]
@@ -49,39 +79,42 @@ func (n *Node) getWorkingSuc() EdgeType {
 	return EdgeType{"", nil}
 }
 
-func (n *Node) getPre(_ int, ret *EdgeType) error {
+func (n *Node) GetPre(_ int, ret *EdgeType) error {
 	if n.Predecessor != nil {
-		ret = n.Predecessor
+		*ret = EdgeType{n.Predecessor.IP, new(big.Int).Set(n.Predecessor.ID)}
 		return nil
 	} else {
-		return errors.New("func.go, getPre(): no pre found")
+		return errors.New("func.go, GetPre(): no pre found")
 	}
 }
 
-func (n *Node) getDataMap(_ int, ret *map[string]string) error {
+func (n *Node) GetDataMap(_ int, ret *map[string]string) error {
 	n.Data.Lock.Lock()
 	*ret = n.Data.Map
 	n.Data.Lock.Unlock()
 	return nil
 }
 
-func (n *Node) getSucList(_ int, ret *[MaxM + 1]EdgeType) error {
+func (n *Node) GetSucList(_ int, ret *[MaxM + 1]EdgeType) error {
 	n.sLock.Lock()
-	for i := 0; i < MaxM; i++ {
+	for i := 1; i < MaxM; i++ {
 		(*ret)[i] = EdgeType{n.Successors[i].IP, new(big.Int).Set(n.Successors[i].ID)}
 	}
 	n.sLock.Unlock()
 	return nil
 }
 
-func (n *Node) findSuc(req *FindType, ans *EdgeType) error {
+func (n *Node) FindSuc(req *FindType, ans *EdgeType) error {
 	req.cnt += 1
 	if req.cnt > MaxReqTimes {
-		return errors.New("func.go, findSuc(): not found when looking up")
+		return errors.New("func.go, FindSuc(): not found when looking up")
 	}
-	suc := n.getWorkingSuc()
+	_ = n.FixSuc()
+	//suc := n.GetWorkingSuc()
+	suc := n.Successors[1]
 	if suc.IP == "" {
-		return errors.New("func.go, findSuc(): cannot get working suc")
+		return errors.New("func.go, FindSuc(): cannot get suc")
+	//	return errors.New("func.go, FindSuc(): cannot get working suc")
 	}
 	if req.ID.Cmp(n.ID) == 0 || suc.ID.Cmp(n.ID) == 0 {
 		*ans = EdgeType{n.IP, new(big.Int).Set(n.ID)}
@@ -91,9 +124,9 @@ func (n *Node) findSuc(req *FindType, ans *EdgeType) error {
 		*ans = EdgeType{suc.IP, new(big.Int).Set(suc.ID)}
 		return nil
 	}
-	nxt := n.closestPreNode(req.ID)
+	nxt := n.ClosestPreNode(req.ID)
 	if nxt.IP == "" {
-		return errors.New("func.go, findSuc(): cannot find closest pre node")
+		return errors.New("func.go, FindSuc(): cannot find closest pre node")
 	}
 	client, err := rpc.Dial("tcp", nxt.IP)
 	if err == nil {
@@ -103,41 +136,45 @@ func (n *Node) findSuc(req *FindType, ans *EdgeType) error {
 	}
 	if err != nil {
 		time.Sleep(1000 * time.Millisecond)
-		return n.findSuc(req, ans)
+		return n.FindSuc(req, ans)
 	}
-	err = client.Call("Node.findSuc", req, ans)
+	err = client.Call("NetNode.FindSuc", req, ans)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (n *Node) closestPreNode(reqID *big.Int) EdgeType {
+func (n *Node) ClosestPreNode(reqID *big.Int) EdgeType {
 	for i := MaxM; i >= 1; i-- {
 		if n.FingerTable[i].ID != nil && n.Ping(n.FingerTable[i].IP) && between(n.ID, n.FingerTable[i].ID, reqID, true) {
-			return n.FingerTable[i]
+			return EdgeType{n.FingerTable[i].IP, new(big.Int).Set(n.FingerTable[i].ID)}
 		}
+	}
+	_ = n.FixSuc()
+	if n.Ping(n.Successors[1].IP) {
+		return EdgeType{n.Successors[1].IP, new(big.Int).Set(n.Successors[1].ID)}
 	}
 	return EdgeType{"", nil}
 }
 
 // when Put()
 // insert val into this node && the backup of this node's suc
-func (n *Node) insertVal(req KVPair, done *bool) error {
+func (n *Node) InsertVal(req KVPair, done *bool) error {
 	*done = false
 	n.Data.Lock.Lock()
 	n.Data.Map[req.Key] = req.Val
 	n.Data.Lock.Unlock()
 
-	err := n.fixSuc()
+	err := n.FixSuc()
 	if err != nil {
 		return err
 	}
-	client, err := rpc.Dial("tcp", n.getWorkingSuc().IP)
+	client, err := rpc.Dial("tcp", n.GetWorkingSuc().IP)
 	if err != nil {
 		return err
 	}
-	err = client.Call("Node.putValBackup", req, done)
+	err = client.Call("NetNode.putValBackup", req, done)
 	if err != nil {
 		return err
 	}
@@ -148,7 +185,7 @@ func (n *Node) insertVal(req KVPair, done *bool) error {
 	*done = true
 	return nil
 }
-func (n *Node) putValBackup(req KVPair, done *bool) error {
+func (n *Node) PutValBackup(req KVPair, done *bool) error {
 	n.backup.Lock.Lock()
 	n.backup.Map[req.Key] = req.Val
 	n.backup.Lock.Unlock()
@@ -157,7 +194,7 @@ func (n *Node) putValBackup(req KVPair, done *bool) error {
 }
 
 // when Get()
-func (n *Node) lookupKey(key string, val *string) error {
+func (n *Node) LookupKey(key string, val *string) error {
 	*val = ""
 	n.Data.Lock.Lock()
 	*val = n.Data.Map[key]
@@ -166,8 +203,8 @@ func (n *Node) lookupKey(key string, val *string) error {
 }
 
 // when Delete()
-func (n *Node) deleteKey(key string, _ int) error {
-	client, err := rpc.Dial("tcp", n.getWorkingSuc().IP)
+func (n *Node) DeleteKey(key string, _ *int) error {
+	client, err := rpc.Dial("tcp", n.GetWorkingSuc().IP)
 	if err == nil {
 		defer func() {
 			_ = client.Close()
@@ -176,7 +213,7 @@ func (n *Node) deleteKey(key string, _ int) error {
 	if err != nil {
 		return err
 	}
-	err = client.Call("Node.deleteKeyBackup", key, nil)
+	err = client.Call("NetNode.deleteKeyBackup", key, nil)
 	if err != nil {
 		return err
 	}
@@ -185,7 +222,7 @@ func (n *Node) deleteKey(key string, _ int) error {
 	n.Data.Lock.Unlock()
 	return nil
 }
-func (n *Node) deleteKeyBackup(key string, _ int) error {
+func (n *Node) DeleteKeyBackup(key string, _ *int) error {
 	n.backup.Lock.Lock()
 	delete(n.backup.Map, key)
 	n.backup.Lock.Unlock()
@@ -193,7 +230,7 @@ func (n *Node) deleteKeyBackup(key string, _ int) error {
 }
 
 // when Join()
-func (n *Node) joinSucRemove(suc EdgeType, _ int) error {
+func (n *Node) JoinSucRemove(suc EdgeType, _ *int) error {
 	n.Data.Lock.Lock()
 	var toDel []string
 	for key := range n.Data.Map {
@@ -210,7 +247,7 @@ func (n *Node) joinSucRemove(suc EdgeType, _ int) error {
 
 // when quit()
 // set n.sucList as suc & suc.sucList
-func (n *Node) quitFixPreSucList(suc EdgeType, _ int) error {
+func (n *Node) QuitFixPreSucList(suc EdgeType, _ *int) error {
 	n.Successors[1] = suc
 	client, err := rpc.Dial("tcp", suc.IP)
 	if err == nil {
@@ -222,7 +259,7 @@ func (n *Node) quitFixPreSucList(suc EdgeType, _ int) error {
 		return err
 	}
 	var sucList [MaxM + 1]EdgeType
-	err = client.Call("Node.getSucList", ReqZero, &sucList)
+	err = client.Call("NetNode.getSucList", ReqZero, &sucList)
 	if err != nil {
 		return err
 	}
@@ -236,14 +273,14 @@ func (n *Node) quitFixPreSucList(suc EdgeType, _ int) error {
 
 // when quit()
 // set n.pre as pre
-func (n *Node) quitFixSucPre(pre EdgeType, _ int) error {
+func (n *Node) QuitFixSucPre(pre EdgeType, _ *int) error {
 	n.Predecessor = &pre
 	return nil
 }
 
 // when quit()
 // move req.map to n.data.map and fix n.backup.map
-func (n *Node) quitMoveData(req *MapWithLock, _ int) error {
+func (n *Node) QuitMoveData(req *MapWithLock, _ *int) error {
 	client, err := rpc.Dial("tcp", n.Successors[1].IP)
 	if err == nil {
 		defer func() {
@@ -258,7 +295,7 @@ func (n *Node) quitMoveData(req *MapWithLock, _ int) error {
 	req.Lock.Lock()
 	for key, val := range req.Map {
 		n.Data.Map[key] = val
-		err = client.Call("Node.putValBackup", KVPair{key, val}, nil)
+		err = client.Call("NetNode.putValBackup", KVPair{key, val}, nil)
 		if err != nil {
 			n.Data.Lock.Unlock()
 			req.Lock.Unlock()
@@ -270,7 +307,7 @@ func (n *Node) quitMoveData(req *MapWithLock, _ int) error {
 	return nil
 }
 
-func (n *Node) quitMoveDataPre(req *MapWithLock, _ int) error {
+func (n *Node) QuitMoveDataPre(req *MapWithLock, _ *int) error {
 	n.backup.Lock.Lock()
 	n.backup.Map = (*req).Map
 	n.backup.Lock.Unlock()
@@ -282,16 +319,16 @@ func (n *Node) Ping(IP string) bool {
 		return false
 	}
 	var done = false
-	for i := 0; i < 3; i++ {
+	for i := 0; i < MaxReqTimes; i++ {
 		ch := make(chan bool)
 		go func() {
-			_, err := rpc.Dial("tcp", IP)
+			client, err := rpc.Dial("tcp", IP)
 			if err == nil {
 				ch <- true
+				_ = client.Close()
 			} else {
 				ch <- false
 			}
-			// Todo: more to do with recover() ??
 		}()
 		select {
 		case done = <-ch:
@@ -301,13 +338,13 @@ func (n *Node) Ping(IP string) bool {
 				continue
 			}
 		case <-time.After(503 * time.Millisecond):
-			continue
+			break
 		}
 	}
 	return false
 }
 
-func (n *Node) fixSuc() error {
+func (n *Node) FixSuc() error {
 	if n.Successors[1].IP == n.IP { // only one node on chord
 		return nil
 	}
@@ -337,7 +374,7 @@ func (n *Node) fixSuc() error {
 		return err
 	}
 	var sucList [MaxM + 1]EdgeType
-	err = client.Call("Node.getSucList", ReqZero, &sucList)
+	err = client.Call("NetNode.getSucList", ReqZero, &sucList)
 	if err != nil {
 		return err
 	}
@@ -349,7 +386,8 @@ func (n *Node) fixSuc() error {
 	return nil
 }
 
-func (n *Node) fixFinger() {
+// go func
+func (n *Node) FixFinger() {
 	n.next = 1
 	var find FindType
 	for n.Connected {
@@ -359,7 +397,7 @@ func (n *Node) fixFinger() {
 		for i := 0; i < MaxReqTimes; i++ {
 			find.ID = jump(n.ID, n.next)
 			find.cnt = 0
-			err := n.findSuc(&find, &n.FingerTable[n.next])
+			err := n.FindSuc(&find, &n.FingerTable[n.next])
 			if err != nil {
 				time.Sleep(503 * time.Millisecond)
 			} else {
@@ -388,10 +426,32 @@ func (n *Node) fixFinger() {
 
 }
 
-func (n *Node) checkPre() bool {
-	if !n.Ping(n.Predecessor.IP) {
-		n.Predecessor = nil
-		return false
+// go func
+func (n *Node) CheckPre() {
+	for n.Connected {
+		if n.Predecessor != nil && !n.Ping(n.Predecessor.IP) {
+				n.Predecessor = nil
+				client, err := rpc.Dial("tcp", n.Successors[1].IP)
+				if err != nil {
+					time.Sleep(233 * time.Millisecond)
+					continue
+				}
+				n.Data.Lock.Lock()
+				n.backup.Lock.Lock()
+				for key, val := range n.backup.Map {
+					n.Data.Map[key] = val
+					if n.IP != n.Successors[1].IP {
+						err = client.Call("NetNode.putValBackup", KVPair{key, val}, nil)
+						if err != nil {
+							break
+						}
+					}
+				}
+				n.backup.Map = make(map[string]string)
+				n.Data.Lock.Unlock()
+				n.backup.Lock.Unlock()
+				_ = client.Close()
+		}
+		time.Sleep(233 * time.Millisecond)
 	}
-	return true
 }

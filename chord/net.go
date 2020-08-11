@@ -1,34 +1,37 @@
 package chord
 
+import "net"
+
 type NetNode struct {
-	Info Node
+	Info   *Node
+	Listen net.Listener
 }
 
-func (n *NetNode) getDataMap(_ int, ret *map[string]string) error {return n.n.getDataMap(ReqZero, ret)}
+func (n *NetNode) GetDataMap(_ int, ret *map[string]string) error {return n.Info.GetDataMap(ReqZero, ret)}
 
-func (n *NetNode) getPre(_ int, ret *EdgeType) error {return n.n.getPre(ReqZero, ret)}
+func (n *NetNode) GetPre(_ int, ret *EdgeType) error {return n.Info.GetPre(ReqZero, ret)}
 
-func (n *NetNode) getSucList(_ int, ret *[MaxM + 1]EdgeType) error {return n.n.getSucList(ReqZero, ret)}
+func (n *NetNode) GetSucList(_ int, ret *[MaxM + 1]EdgeType) error {return n.Info.GetSucList(ReqZero, ret)}
 
-func (n *NetNode) notify(pre *EdgeType, _ *int) error {return n.n.notify(pre, nil)}
+func (n *NetNode) Notify(pre *EdgeType, _ *int) error {return n.Info.Notify(pre, nil)}
 
-func (n *NetNode) insertVal(req KVPair, done *bool) error {return n.n.insertVal(req, done)}
+func (n *NetNode) InsertVal(req KVPair, done *bool) error {return n.Info.InsertVal(req, done)}
 
-func (n *NetNode) lookupKey(key string, val *string) error {return n.n.lookupKey(key, val)}
+func (n *NetNode) LookupKey(key string, val *string) error {return n.Info.LookupKey(key, val)}
 
-func (n *NetNode) deleteKey(key string, _ int) error {return n.n.deleteKey(key, ReqZero)}
+func (n *NetNode) DeleteKey(key string, _ *int) error {return n.Info.DeleteKey(key, nil)}
 
-func (n *NetNode) joinSucRemove(suc EdgeType, _ int) error {return n.n.joinSucRemove(suc, ReqZero)}
+func (n *NetNode) JoinSucRemove(suc EdgeType, _ *int) error {return n.Info.JoinSucRemove(suc, nil)}
 
-func (n *NetNode) quitFixSucPre(pre EdgeType, _ int) error {return n.n.quitFixSucPre(pre, ReqZero)}
+func (n *NetNode) QuitFixSucPre(pre EdgeType, _ *int) error {return n.Info.QuitFixSucPre(pre, nil)}
 
-func (n *NetNode) quitFixPreSucList(suc EdgeType, _ int) error {return n.n.quitFixPreSucList(suc, ReqZero)}
+func (n *NetNode) QuitFixPreSucList(suc EdgeType, _ *int) error {return n.Info.QuitFixPreSucList(suc, nil)}
 
-func (n *NetNode) findSuc(req *FindType, ans *EdgeType) error {return n.n.findSuc(req, ans)}
+func (n *NetNode) FindSuc(req *FindType, ans *EdgeType) error {return n.Info.FindSuc(req, ans)}
 
-func (n *NetNode) putValBackup(req KVPair, done *bool) error {return n.n.putValBackup(req, done)}
+func (n *NetNode) PutValBackup(req KVPair, done *bool) error {return n.Info.PutValBackup(req, done)}
 
-func (n *NetNode) deleteKeyBackup(key string, _ int) error {return n.n.deleteKeyBackup(key, ReqZero)}
+func (n *NetNode) DeleteKeyBackup(key string, _ *int) error {return n.Info.DeleteKeyBackup(key, nil)}
 
 /*
 for reference:

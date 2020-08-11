@@ -2,6 +2,7 @@ package chord
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"net/rpc"
 	"sync"
@@ -46,47 +47,55 @@ type KVPair struct {
 	Key, Val string
 }
 
-func (n *Node) stabilize() {
+// go func
+func (n *Node) Stabilize() {
+	for n.Connected {
+		n.Stabilize_()
+		time.Sleep(233 * time.Millisecond)
+	}
+}
+
+func (n *Node) Stabilize_() {
 	var suc EdgeType
-	suc = n.getWorkingSuc()
+	suc = n.GetWorkingSuc()
 	if suc.IP == "" {
 		return
 	}
-	client, errDial := rpc.Dial("tcp", suc.IP)
-	if errDial == nil {
-		defer func() {
-			_ = client.Close()
-		}()
+	client, err := rpc.Dial("tcp", suc.IP)
+	if err == nil {
+		defer func() {_ = client.Close()}()
 	}
-	if errDial != nil || client == nil { // Dial failed
+	if err != nil || client == nil { // Dial failed
 		return
 	}
 
 	var pre EdgeType
-	errCall := client.Call("Node.getPre", ReqZero, &pre)
-	if errCall != nil || pre.IP == "" {
-		// Todo: what to do when err or pre cannot be pinged?
-	}
+	err = client.Call("NetNode.GetPre", ReqZero, &pre)
+	//if err != nil || pre.IP == "" {
+	//	return
+	//}
 
-	if errCall == nil && n.Ping(pre.IP) {
+	if err == nil && n.Ping(pre.IP) {
 		n.sLock.Lock()
 		if between(n.ID, pre.ID, n.Successors[1].ID, false) {
 			n.Successors[1] = pre
 		}
-		client, errDial = rpc.Dial("tcp", n.Successors[1].IP)
-		n.sLock.Unlock()
-		if errDial == nil {
-			defer func() {
-				_ = client.Close()
-			}()
+		client, err = rpc.Dial("tcp", n.Successors[1].IP)
+		if err == nil {
+			defer func() {_ = client.Close()}()
 		}
-		if errDial != nil { // Dial failed
+		n.sLock.Unlock()
+		if err != nil { // Dial failed
 			return
 		}
 	}
+	err = client.Call("NetNode.Notify", &EdgeType{n.IP, n.ID}, nil)
+	if err != nil { // Call failed
+		return
+	}
 	var sucList [MaxM + 1]EdgeType
-	errCall = client.Call("Node.getSucList", ReqZero, &sucList)
-	if errCall != nil { // Call failed
+	err = client.Call("NetNode.GetSucList", ReqZero, &sucList)
+	if err != nil { // Call failed
 		return
 	}
 	n.sLock.Lock()
@@ -94,16 +103,9 @@ func (n *Node) stabilize() {
 		n.Successors[i] = sucList[i-1]
 	}
 	n.sLock.Unlock()
-	errCall = client.Call("Node.notify", &EdgeType{n.IP, n.ID}, nil)
-	if errCall != nil { // Call failed
-		return
-	}
 }
 
-func (n *Node) notify(pre *EdgeType, _ *int) error {
-	if n.Predecessor.IP == pre.IP {
-		return nil
-	}
+func (n *Node) Notify(pre *EdgeType, _ *int) error {
 	if n.Predecessor == nil || between(n.Predecessor.ID, pre.ID, n.ID, false) {
 		n.Predecessor = pre
 		client, err := rpc.Dial("tcp", n.Predecessor.IP)
@@ -114,18 +116,22 @@ func (n *Node) notify(pre *EdgeType, _ *int) error {
 			_ = client.Close()
 		}()
 		preMap := make(map[string]string)
-		err = client.Call("Node.getDataMap", ReqZero, &preMap)
+		err = client.Call("NetNode.GetDataMap", ReqZero, &preMap)
 		n.backup.Lock.Lock()
 		n.backup.Map = preMap
 		n.backup.Lock.Unlock()
 		return nil
 	}
+	if n.Predecessor.IP == pre.IP || n.Predecessor.IP == n.IP {
+		return nil
+	}
 	return errors.New("node.go, notify(): notify failed")
+	//return nil
 }
 
 func (n *Node) Init(str string) {
 	// All to do when init
-	n.IP = str
+	n.IP = LocAddr() + ":" + str
 	n.ID = hash(str)
 	//n.FingerTable = nil
 	//n.Successors  = nil
@@ -145,7 +151,7 @@ func (n *Node) Create() {
 func (n *Node) Put(key, val string) bool {
 	keyID := hash(key)
 	var suc EdgeType
-	err := n.findSuc(&FindType{new(big.Int).Set(keyID), 0}, &suc)
+	err := n.FindSuc(&FindType{new(big.Int).Set(keyID), 0}, &suc)
 	if err != nil {
 		return false
 	}
@@ -160,7 +166,7 @@ func (n *Node) Put(key, val string) bool {
 	}
 
 	var done bool
-	err = client.Call("Node.insertVal", KVPair{key, val}, &done)
+	err = client.Call("NetNode.InsertVal", KVPair{key, val}, &done)
 	if err != nil {
 		return false
 	}
@@ -175,7 +181,7 @@ func (n *Node) Get(key string) (bool, string) {
 	keyID := hash(key)
 	var suc EdgeType
 	for i := 0; !done && i < MaxReqTimes; i++ {
-		err := n.findSuc(&FindType{new(big.Int).Set(keyID), 0}, &suc)
+		err := n.FindSuc(&FindType{new(big.Int).Set(keyID), 0}, &suc)
 		if err != nil {
 			return false, val
 		}
@@ -183,7 +189,7 @@ func (n *Node) Get(key string) (bool, string) {
 		if err != nil {
 			time.Sleep(503 * time.Millisecond)
 		} else {
-			err = client.Call("Node.lookupKey", key, &val)
+			err = client.Call("NetNode.LookupKey", key, &val)
 			_ = client.Close()
 			done = true
 		}
@@ -195,7 +201,7 @@ func (n *Node) Get(key string) (bool, string) {
 func (n *Node) Delete(key string) bool {
 	keyID := hash(key)
 	var suc EdgeType
-	err := n.findSuc(&FindType{new(big.Int).Set(keyID), 0}, &suc)
+	err := n.FindSuc(&FindType{new(big.Int).Set(keyID), 0}, &suc)
 	if err != nil {
 		return false
 	}
@@ -203,7 +209,7 @@ func (n *Node) Delete(key string) bool {
 	if err != nil {
 		return false
 	}
-	err = client.Call("Node.deleteKey", key, nil)
+	err = client.Call("NetNode.DeleteKey", key, nil)
 	if err != nil {
 		return false
 	}
@@ -211,8 +217,17 @@ func (n *Node) Delete(key string) bool {
 	return true
 }
 
-func (n *Node) Dump(key string) {
-	// Todo: Dump
+func (n *Node) Dump() {
+	fmt.Println("IP:   ", n.IP)
+	//fmt.Println("ID:   ", n.ID)
+	if n.Predecessor != nil {
+		fmt.Println("pre:  ", n.Predecessor.IP)
+	} else {
+		fmt.Println("pre:  nil")
+	}
+	fmt.Println("suc1: ", n.Successors[1].IP)
+	fmt.Println("suc2: ", n.Successors[2].IP)
+	fmt.Println("is on:", n.Connected)
 }
 
 func (n *Node) Join(IP string) bool {
@@ -226,12 +241,13 @@ func (n *Node) Join(IP string) bool {
 		return false
 	}
 	n.Predecessor = nil
-	err = n.findSuc(&FindType{new(big.Int).Set(n.ID), 0}, &n.Successors[1])
+
+	err = client.Call("NetNode.FindSuc", &FindType{new(big.Int).Set(n.ID), 0}, &n.Successors[1])
 	if err != nil {
 		return false
 	}
 
-	client, err = rpc.Dial("tcp", n.getWorkingSuc().IP)
+	client, err = rpc.Dial("tcp", n.GetWorkingSuc().IP)
 	if err == nil {
 		defer func() {
 			_ = client.Close()
@@ -241,18 +257,18 @@ func (n *Node) Join(IP string) bool {
 		return false
 	}
 	var pre EdgeType
-	err = client.Call("Node.getPre", ReqZero, &pre)
+	err = client.Call("NetNode.GetPre", ReqZero, &pre)
 	if err != nil || pre.IP == "" {
 		return false
 	}
 	var sucMap map[string]string
-	err = client.Call("Node.getDataMap", ReqZero, &sucMap)
+	err = client.Call("NetNode.GetDataMap", ReqZero, &sucMap)
 	if err != nil {
 		return false
 	}
 
 	var sucList [MaxM + 1]EdgeType
-	err = client.Call("Node.getSucList", ReqZero, &sucList)
+	err = client.Call("NetNode.GetSucList", ReqZero, &sucList)
 	n.sLock.Lock()
 	for i := 2; i < MaxM; i++ {
 		n.Successors[i] = sucList[i-1]
@@ -268,18 +284,18 @@ func (n *Node) Join(IP string) bool {
 	n.Data.Lock.Unlock()
 
 	// remove some from n.suc.data.map
-	err = client.Call("Node.joinSucRemove", &EdgeType{n.IP, n.ID}, nil)
+	err = client.Call("NetNode.JoinSucRemove", &EdgeType{n.IP, n.ID}, nil)
 	if err != nil {
 		return false
 	}
 	// fix n.suc.backup
-	err = client.Call("Node.notify", &EdgeType{n.IP, n.ID}, nil)
+	err = client.Call("NetNode.Notify", &EdgeType{n.IP, n.ID}, nil)
 	if err != nil {
 		return false
 	}
-	go n.stabilize()
-	go n.fixFinger()
-	go n.checkPre()
+	go n.Stabilize()
+	go n.FixFinger()
+	go n.CheckPre()
 	n.Connected = true
 	return true
 }
@@ -295,7 +311,7 @@ func (n *Node) Quit() {
 	if err != nil {
 		return
 	}
-	err = client.Call("Node.quitFixPreSucList", n.Successors[1], nil)
+	err = client.Call("NetNode.QuitFixPreSucList", n.Successors[1], nil)
 	if err != nil {
 		return
 	}
@@ -310,12 +326,12 @@ func (n *Node) Quit() {
 	if err != nil {
 		return
 	}
-	err = client.Call("Node.quitFixSucPre", n.Predecessor, nil)
+	err = client.Call("NetNode.QuitFixSucPre", n.Predecessor, nil)
 	if err != nil {
 		return
 	}
 
-	err = n.fixSuc()
+	err = n.FixSuc()
 	if err != nil {
 		return
 	}
@@ -329,8 +345,8 @@ func (n *Node) Quit() {
 	if err != nil {
 		return
 	}
-	err = client.Call("quitMoveData", &n.Data, nil)
-	err = client.Call("quitMoveDataPre", &n.Data, nil)
+	err = client.Call("NetNode.QuitMoveData", &n.Data, nil)
+	err = client.Call("NetNode.QuitMoveDataPre", &n.Data, nil)
 	if err != nil {
 		return
 	}
