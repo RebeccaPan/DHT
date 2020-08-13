@@ -27,6 +27,10 @@ func (n *NetNode) QuitFixSucPre(pre EdgeType, _ *int) error {return n.Info.QuitF
 
 func (n *NetNode) QuitFixPreSucList(suc EdgeType, _ *int) error {return n.Info.QuitFixPreSucList(suc, nil)}
 
+func (n *NetNode) QuitMoveData(ret *MapWithLock, _ *int) error {return n.Info.QuitMoveData(ret, nil)}
+
+func (n *NetNode) QuitMoveDataPre(ret *MapWithLock, _ *int) error {return n.Info.QuitMoveDataPre(ret, nil)}
+
 func (n *NetNode) FindSuc(req *FindType, ans *EdgeType) error {return n.Info.FindSuc(req, ans)}
 
 func (n *NetNode) PutValBackup(req KVPair, done *bool) error {return n.Info.PutValBackup(req, done)}

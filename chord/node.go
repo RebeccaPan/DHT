@@ -27,7 +27,7 @@ type FindType struct {
 
 type MapWithLock struct {
 	Map  map[string]string
-	Lock sync.Mutex
+	lock sync.Mutex
 }
 
 type Node struct {
@@ -118,9 +118,9 @@ func (n *Node) Notify(pre *EdgeType, _ *int) error {
 		}()
 		preMap := make(map[string]string)
 		err = client.Call("NetNode.GetDataMap", ReqZero, &preMap)
-		n.backup.Lock.Lock()
+		n.backup.lock.Lock()
 		n.backup.Map = preMap
-		n.backup.Lock.Unlock()
+		n.backup.lock.Unlock()
 		return nil
 	}
 	if n.Predecessor.IP == pre.IP || n.Predecessor.IP == n.IP {
@@ -155,6 +155,7 @@ func (n *Node) Put(key, val string) bool {
 	var suc EdgeType
 	err := n.FindSuc(&FindType{new(big.Int).Set(keyID), 0}, &suc)
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 	client, err := rpc.Dial("tcp", suc.IP)
@@ -164,12 +165,14 @@ func (n *Node) Put(key, val string) bool {
 		}()
 	}
 	if err != nil || client == nil { // Dial failed
+		fmt.Println(err)
 		return false
 	}
 
 	var done bool
 	err = client.Call("NetNode.InsertVal", KVPair{key, val}, &done)
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 	return done
@@ -185,6 +188,7 @@ func (n *Node) Get(key string) (bool, string) {
 	for i := 0; !done && i < MaxReqTimes; i++ {
 		err := n.FindSuc(&FindType{new(big.Int).Set(keyID), 0}, &suc)
 		if err != nil {
+			fmt.Println(err)
 			return false, val
 		}
 		client, err := rpc.Dial("tcp", suc.IP)
@@ -196,7 +200,12 @@ func (n *Node) Get(key string) (bool, string) {
 			done = true
 		}
 	}
-	return done, val
+	if done {
+		return done, val
+	} else {
+		fmt.Println("more than max_req_times")
+		return done, val
+	}
 }
 
 // delete <K, V>; do nothing if K is not found
@@ -205,14 +214,17 @@ func (n *Node) Delete(key string) bool {
 	var suc EdgeType
 	err := n.FindSuc(&FindType{new(big.Int).Set(keyID), 0}, &suc)
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 	client, err := rpc.Dial("tcp", suc.IP)
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 	err = client.Call("NetNode.DeleteKey", key, nil)
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 	_ = client.Close()
@@ -246,12 +258,14 @@ func (n *Node) Join(IP string) bool {
 		}()
 	}
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 	n.Predecessor = nil
 
 	err = client.Call("NetNode.FindSuc", &FindType{new(big.Int).Set(n.ID), 0}, &n.Successors[1])
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 
@@ -262,16 +276,19 @@ func (n *Node) Join(IP string) bool {
 		}()
 	}
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 	var pre EdgeType
 	err = client.Call("NetNode.GetPre", ReqZero, &pre)
 	if err != nil || pre.IP == "" {
+		fmt.Println(err)
 		return false
 	}
 	var sucMap map[string]string
 	err = client.Call("NetNode.GetDataMap", ReqZero, &sucMap)
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 
@@ -283,22 +300,24 @@ func (n *Node) Join(IP string) bool {
 	}
 	n.sLock.Unlock()
 
-	n.Data.Lock.Lock()
+	n.Data.lock.Lock()
 	for key, val := range sucMap {
 		if !between(pre.ID, hash(key), n.ID, true) {
 			n.Data.Map[key] = val
 		}
 	}
-	n.Data.Lock.Unlock()
+	n.Data.lock.Unlock()
 
 	// remove some from n.suc.data.map
 	err = client.Call("NetNode.JoinSucRemove", &EdgeType{n.IP, n.ID}, nil)
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 	// fix n.suc.backup
 	err = client.Call("NetNode.Notify", &EdgeType{n.IP, n.ID}, nil)
 	if err != nil {
+		fmt.Println(err)
 		return false
 	}
 	go n.Stabilize()
@@ -310,6 +329,10 @@ func (n *Node) Join(IP string) bool {
 
 func (n *Node) Quit() {
 	// fix n.pre.sucList
+	if n.Predecessor == nil {
+		fmt.Println("no pre found")
+		return
+	}
 	client, err := rpc.Dial("tcp", n.Predecessor.IP)
 	if err == nil {
 		defer func() {
@@ -317,10 +340,12 @@ func (n *Node) Quit() {
 		}()
 	}
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	err = client.Call("NetNode.QuitFixPreSucList", n.Successors[1], nil)
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
@@ -332,15 +357,18 @@ func (n *Node) Quit() {
 		}()
 	}
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	err = client.Call("NetNode.QuitFixSucPre", n.Predecessor, nil)
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
 	err = n.FixSuc()
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	// move all n.data to n.suc.data
@@ -351,11 +379,13 @@ func (n *Node) Quit() {
 		}()
 	}
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	err = client.Call("NetNode.QuitMoveData", &n.Data, nil)
 	err = client.Call("NetNode.QuitMoveDataPre", &n.Data, nil)
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 

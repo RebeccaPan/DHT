@@ -2,6 +2,7 @@ package main
 
 import (
 	"chord"
+	"fmt"
 	"net"
 	"net/rpc"
 	"strconv"
@@ -76,6 +77,7 @@ func (id *DHTNode) Quit() {
 	id.Info.Info.Quit()
 	if id.Info.Info.Connected {
 		// quit failure
+		fmt.Println("Quit failed")
 	}
 }
 
@@ -87,6 +89,7 @@ func (id *DHTNode) ForceQuit() {
 	err := id.Info.Listen.Close()
 	if err != nil {
 		// close listen failure
+		fmt.Println("Force Quit failed")
 		return
 	}
 }

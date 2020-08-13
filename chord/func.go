@@ -85,9 +85,9 @@ func (n *Node) GetPre(_ int, ret *EdgeType) error {
 }
 
 func (n *Node) GetDataMap(_ int, ret *map[string]string) error {
-	n.Data.Lock.Lock()
+	n.Data.lock.Lock()
 	*ret = n.Data.Map
-	n.Data.Lock.Unlock()
+	n.Data.lock.Unlock()
 	return nil
 }
 
@@ -156,9 +156,9 @@ func (n *Node) ClosestPreNode(reqID *big.Int) EdgeType {
 // insert val into this node && the backup of this node's suc
 func (n *Node) InsertVal(req KVPair, done *bool) error {
 	*done = false
-	n.Data.Lock.Lock()
+	n.Data.lock.Lock()
 	n.Data.Map[req.Key] = req.Val
-	n.Data.Lock.Unlock()
+	n.Data.lock.Unlock()
 
 	_ = n.FixSuc()
 	client, err := rpc.Dial("tcp", n.GetWorkingSuc().IP)
@@ -177,9 +177,9 @@ func (n *Node) InsertVal(req KVPair, done *bool) error {
 	return nil
 }
 func (n *Node) PutValBackup(req KVPair, done *bool) error {
-	n.backup.Lock.Lock()
+	n.backup.lock.Lock()
 	n.backup.Map[req.Key] = req.Val
-	n.backup.Lock.Unlock()
+	n.backup.lock.Unlock()
 	*done = true
 	return nil
 }
@@ -187,9 +187,9 @@ func (n *Node) PutValBackup(req KVPair, done *bool) error {
 // when Get()
 func (n *Node) LookupKey(key string, val *string) error {
 	*val = ""
-	n.Data.Lock.Lock()
+	n.Data.lock.Lock()
 	*val = n.Data.Map[key]
-	n.Data.Lock.Unlock()
+	n.Data.lock.Unlock()
 	return nil
 }
 
@@ -208,21 +208,21 @@ func (n *Node) DeleteKey(key string, _ *int) error {
 	if err != nil {
 		return err
 	}
-	n.Data.Lock.Lock()
+	n.Data.lock.Lock()
 	delete(n.Data.Map, key)
-	n.Data.Lock.Unlock()
+	n.Data.lock.Unlock()
 	return nil
 }
 func (n *Node) DeleteKeyBackup(key string, _ *int) error {
-	n.backup.Lock.Lock()
+	n.backup.lock.Lock()
 	delete(n.backup.Map, key)
-	n.backup.Lock.Unlock()
+	n.backup.lock.Unlock()
 	return nil
 }
 
 // when Join()
 func (n *Node) JoinSucRemove(suc EdgeType, _ *int) error {
-	n.Data.Lock.Lock()
+	n.Data.lock.Lock()
 	var toDel []string
 	for key := range n.Data.Map {
 		if !between(n.Predecessor.ID, hash(key), suc.ID, true) {
@@ -232,7 +232,7 @@ func (n *Node) JoinSucRemove(suc EdgeType, _ *int) error {
 	for _, str := range toDel {
 		delete(n.Data.Map, str)
 	}
-	n.Data.Lock.Unlock()
+	n.Data.lock.Unlock()
 	return nil
 }
 
@@ -282,26 +282,26 @@ func (n *Node) QuitMoveData(req *MapWithLock, _ *int) error {
 		return err
 	}
 
-	n.Data.Lock.Lock()
-	req.Lock.Lock()
+	n.Data.lock.Lock()
+	req.lock.Lock()
 	for key, val := range req.Map {
 		n.Data.Map[key] = val
 		err = client.Call("NetNode.PutValBackup", KVPair{key, val}, nil)
 		if err != nil {
-			n.Data.Lock.Unlock()
-			req.Lock.Unlock()
+			n.Data.lock.Unlock()
+			req.lock.Unlock()
 			return err
 		}
 	}
-	n.Data.Lock.Unlock()
-	req.Lock.Unlock()
+	n.Data.lock.Unlock()
+	req.lock.Unlock()
 	return nil
 }
 
 func (n *Node) QuitMoveDataPre(req *MapWithLock, _ *int) error {
-	n.backup.Lock.Lock()
+	n.backup.lock.Lock()
 	n.backup.Map = (*req).Map
-	n.backup.Lock.Unlock()
+	n.backup.lock.Unlock()
 	return nil
 }
 
@@ -404,8 +404,8 @@ func (n *Node) CheckPre() {
 					time.Sleep(233 * time.Millisecond)
 					continue
 				}
-				n.Data.Lock.Lock()
-				n.backup.Lock.Lock()
+				n.Data.lock.Lock()
+				n.backup.lock.Lock()
 				for key, val := range n.backup.Map {
 					n.Data.Map[key] = val
 					if n.IP != n.Successors[1].IP {
@@ -416,8 +416,8 @@ func (n *Node) CheckPre() {
 					}
 				}
 				n.backup.Map = make(map[string]string)
-				n.Data.Lock.Unlock()
-				n.backup.Lock.Unlock()
+				n.Data.lock.Unlock()
+				n.backup.lock.Unlock()
 				_ = client.Close()
 		}
 		time.Sleep(233 * time.Millisecond)
