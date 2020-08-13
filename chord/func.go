@@ -3,6 +3,7 @@ package chord
 import (
 	"crypto/sha1"
 	"errors"
+	"fmt"
 	"math/big"
 	"net"
 	"net/rpc"
@@ -190,6 +191,31 @@ func (n *Node) LookupKey(key string, val *string) error {
 	n.Data.lock.Lock()
 	*val = n.Data.Map[key]
 	n.Data.lock.Unlock()
+	if *val == "" {
+		_ = n.FixSuc()
+		client, err := rpc.Dial("tcp", n.GetWorkingSuc().IP)
+		if err != nil {
+			return err
+		}
+		err = client.Call("NetNode.LookupKeyBackup", key, val)
+		if err != nil {
+			return err
+		}
+		_ = client.Close()
+	}
+	if *val == "" {
+		fmt.Println("Get() fail: get empty string in map")
+	}
+	return nil
+}
+func (n *Node) LookupKeyBackup(key string, val *string) error {
+	*val = ""
+	n.backup.lock.Lock()
+	*val = n.backup.Map[key]
+	n.backup.lock.Unlock()
+	if *val == "" {
+		fmt.Println("Get() fail: get empty string in backup")
+	}
 	return nil
 }
 
@@ -320,7 +346,6 @@ func (n *Node) Ping(IP string) bool {
 			} else {
 				ch <- false
 			}
-			// Todo: more to do with recover() ??
 		}()
 		select {
 		case done = <-ch:
@@ -387,7 +412,7 @@ func (n *Node) FixFinger() {
 	for n.Connected {
 		err := n.FindSuc(&FindType{jump(n.ID, n.next), 0}, &n.FingerTable[n.next])
 		if err == nil {
-			n.next = n.next%MaxM + 1 //1 ~ MaxM+1
+			n.next = n.next%MaxM + 1 //1 ~ MaxM
 		}
 		time.Sleep(103 * time.Millisecond)
 	}

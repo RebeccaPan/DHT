@@ -78,7 +78,7 @@ func (id *DHTNode) Quit() {
 	err := id.Info.Listen.Close()
 	if err != nil || id.Info.Info.Connected {
 		// quit failure
-		fmt.Println("Quit failed")
+		fmt.Println("Quit failed; err =", err)
 	}
 }
 

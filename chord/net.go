@@ -19,6 +19,8 @@ func (n *NetNode) InsertVal(req KVPair, done *bool) error {return n.Info.InsertV
 
 func (n *NetNode) LookupKey(key string, val *string) error {return n.Info.LookupKey(key, val)}
 
+func (n *NetNode) LookupKeyBackup(key string, val *string) error {return n.Info.LookupKeyBackup(key, val)}
+
 func (n *NetNode) DeleteKey(key string, _ *int) error {return n.Info.DeleteKey(key, nil)}
 
 func (n *NetNode) JoinSucRemove(suc EdgeType, _ *int) error {return n.Info.JoinSucRemove(suc, nil)}
