@@ -67,7 +67,7 @@ func LocAddr() string {
 }
 
 func (n *Node) GetWorkingSuc() EdgeType {
-	for i := 1; i < MaxM; i++ {
+	for i := 1; i <= MaxM; i++ {
 		if n.Ping(n.Successors[i].IP) {
 			return n.Successors[i]
 		}
@@ -93,7 +93,7 @@ func (n *Node) GetDataMap(_ int, ret *map[string]string) error {
 
 func (n *Node) GetSucList(_ int, ret *[MaxM + 1]EdgeType) error {
 	n.sLock.Lock()
-	for i := 1; i < MaxM; i++ {
+	for i := 1; i <= MaxM; i++ {
 		(*ret)[i] = EdgeType{n.Successors[i].IP, new(big.Int).Set(n.Successors[i].ID)}
 	}
 	n.sLock.Unlock()
@@ -255,7 +255,7 @@ func (n *Node) QuitFixPreSucList(suc EdgeType, _ *int) error {
 		return err
 	}
 	n.sLock.Lock()
-	for i := 2; i < MaxM; i++ {
+	for i := 2; i <= MaxM; i++ {
 		n.Successors[i] = sucList[i-1]
 	}
 	n.sLock.Unlock()
@@ -343,7 +343,7 @@ func (n *Node) FixSuc() error {
 	n.sLock.Lock()
 	var index int
 	var found = false
-	for index = 1; index < MaxM; index++ {
+	for index = 1; index <= MaxM; index++ {
 		if n.Ping(n.Successors[index].IP) {
 			found = true
 			break
@@ -375,7 +375,7 @@ func (n *Node) FixSuc() error {
 		return err
 	}
 	n.sLock.Lock()
-	for i := 2; i < MaxM; i++ {
+	for i := 2; i <= MaxM; i++ {
 		n.Successors[i] = sucList[i-1]
 	}
 	n.sLock.Unlock()
@@ -387,7 +387,7 @@ func (n *Node) FixFinger() {
 	for n.Connected {
 		err := n.FindSuc(&FindType{jump(n.ID, n.next), 0}, &n.FingerTable[n.next])
 		if err == nil {
-			n.next = (n.next + 1) % MaxM
+			n.next = n.next%MaxM + 1 //1 ~ MaxM+1
 		}
 		time.Sleep(103 * time.Millisecond)
 	}

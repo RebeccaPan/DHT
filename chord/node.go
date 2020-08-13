@@ -56,30 +56,44 @@ func (n *Node) Stabilize() {
 }
 
 func (n *Node) Stabilize_() {
+	//fmt.Println("----Stabilize_: ", n.IP)
+	//defer fmt.Println("---#Stabilize_: ", n.IP)
 	var suc EdgeType
 	suc = n.GetWorkingSuc()
 	if suc.IP == "" {
 		return
 	}
 	client, err := rpc.Dial("tcp", suc.IP)
-	/*if err == nil {
-		defer func() {_ = client.Close()}()// WARNING no client causing panic
-	}*/
-	if err != nil || client == nil { // Dial failed
+	if err != nil { // Dial failed
 		return
 	}
 
 	var pre EdgeType
 	err = client.Call("NetNode.GetPre", ReqZero, &pre)
-	//if err != nil || pre.IP == "" {
-	//	return
-	//}
-
+	if err != nil || pre.IP == "" {
+		err = client.Call("NetNode.Notify", &EdgeType{n.IP, n.ID}, nil)
+		if err != nil { // Call failed
+			return
+		}
+		var sucList [MaxM + 1]EdgeType
+		err = client.Call("NetNode.GetSucList", ReqZero, &sucList)
+		if err != nil { // Call failed
+			return
+		}
+		n.sLock.Lock()
+		for i := 2; i <= MaxM; i++ {
+			n.Successors[i] = sucList[i-1]
+		}
+		n.sLock.Unlock()
+		_ = client.Close()
+		return
+	}
 	if err == nil && n.Ping(pre.IP) {
 		n.sLock.Lock()
 		if between(n.ID, pre.ID, n.Successors[1].ID, false) {
 			n.Successors[1] = pre
 		}
+		_ = client.Close()
 		client, err = rpc.Dial("tcp", n.Successors[1].IP)
 		if err == nil {
 			defer func() {_ = client.Close()}()
@@ -88,25 +102,26 @@ func (n *Node) Stabilize_() {
 		if err != nil { // Dial failed
 			return
 		}
+		err = client.Call("NetNode.Notify", &EdgeType{n.IP, n.ID}, nil)
+		if err != nil { // Call failed
+			return
+		}
+		var sucList [MaxM + 1]EdgeType
+		err = client.Call("NetNode.GetSucList", ReqZero, &sucList)
+		if err != nil { // Call failed
+			return
+		}
+		n.sLock.Lock()
+		for i := 2; i <= MaxM; i++ {
+			n.Successors[i] = sucList[i-1]
+		}
+		n.sLock.Unlock()
 	}
-	err = client.Call("NetNode.Notify", &EdgeType{n.IP, n.ID}, nil)
-	if err != nil { // Call failed
-		return
-	}
-	var sucList [MaxM + 1]EdgeType
-	err = client.Call("NetNode.GetSucList", ReqZero, &sucList)
-	if err != nil { // Call failed
-		return
-	}
-	n.sLock.Lock()
-	for i := 2; i <= MaxM; i++ {
-		n.Successors[i] = sucList[i-1]
-	}
-	n.sLock.Unlock()
-	_ = client.Close()
 }
 
 func (n *Node) Notify(pre *EdgeType, _ *int) error {
+	//fmt.Println("----Notify: ", n.IP)
+	//defer fmt.Println("---#Notify: ", n.IP)
 	if n.Predecessor == nil || between(n.Predecessor.ID, pre.ID, n.ID, false) {
 		n.Predecessor = pre
 		client, err := rpc.Dial("tcp", n.Predecessor.IP)
@@ -144,7 +159,7 @@ func (n *Node) Init(str string) {
 
 func (n *Node) Create() {
 	n.Predecessor = &EdgeType{n.IP, new(big.Int).Set(n.ID)}
-	for i := 1; i < MaxM; i++ {
+	for i := 1; i <= MaxM; i++ {
 		n.Successors[i] = EdgeType{n.IP, new(big.Int).Set(n.ID)}
 	}
 }
@@ -295,7 +310,7 @@ func (n *Node) Join(IP string) bool {
 	var sucList [MaxM + 1]EdgeType
 	err = client.Call("NetNode.GetSucList", ReqZero, &sucList)
 	n.sLock.Lock()
-	for i := 2; i < MaxM; i++ {
+	for i := 2; i <= MaxM; i++ {
 		n.Successors[i] = sucList[i-1]
 	}
 	n.sLock.Unlock()
