@@ -96,7 +96,7 @@ func (n *Node) Stabilize_() {
 		_ = client.Close()
 		client, err = rpc.Dial("tcp", n.Successors[1].IP)
 		if err == nil {
-			defer func() {_ = client.Close()}()
+			defer func() { _ = client.Close() }()
 		}
 		n.sLock.Unlock()
 		if err != nil { // Dial failed
@@ -204,13 +204,14 @@ func (n *Node) Get(key string) (bool, string) {
 			return false, val
 		}
 		client, err := rpc.Dial("tcp", suc.IP)
-		if err != nil {
+		if err != nil { // Dial failed
 			time.Sleep(503 * time.Millisecond)
 		} else {
 			err = client.Call("NetNode.LookupKey", key, &val)
 			_ = client.Close()
 			if err == nil {
 				done = true
+				break
 			}
 		}
 	}
@@ -256,24 +257,16 @@ func (n *Node) Dump() {
 	} else {
 		fmt.Println("pre:  nil")
 	}
-	fmt.Println("suc1: ", n.Successors[1].IP, "self < suc1?", n.ID.Cmp(n.Successors[1].ID))
-	fmt.Println("suc2: ", n.Successors[2].IP, "suc1 < suc2?", n.Successors[1].ID.Cmp(n.Successors[2].ID))
+	//fmt.Println("suc1: ", n.Successors[1].IP, "self < suc1?", n.ID.Cmp(n.Successors[1].ID))
+	//fmt.Println("suc2: ", n.Successors[2].IP, "suc1 < suc2?", n.Successors[1].ID.Cmp(n.Successors[2].ID))
 	fmt.Println("finger0: ", n.FingerTable[0].IP)
 	fmt.Println("finger1: ", n.FingerTable[1].IP)
-	fmt.Println("finger2: ", n.FingerTable[2].IP)
-	fmt.Println("finger3: ", n.FingerTable[3].IP)
-	fmt.Println("finger4: ", n.FingerTable[4].IP)
-	fmt.Println("finger5: ", n.FingerTable[5].IP)
 	fmt.Println("is on:", n.Connected)
+	fmt.Println(n.Data.Map["Rouge"])
 }
 
 func (n *Node) Join(IP string) bool {
 	client, err := rpc.Dial("tcp", IP)
-	if err == nil {
-		defer func() {
-			_ = client.Close()
-		}()
-	}
 	if err != nil {
 		fmt.Println(err)
 		return false
@@ -285,6 +278,7 @@ func (n *Node) Join(IP string) bool {
 		fmt.Println(err)
 		return false
 	}
+	_ = client.Close()
 
 	client, err = rpc.Dial("tcp", n.GetWorkingSuc().IP)
 	if err == nil {
@@ -319,7 +313,7 @@ func (n *Node) Join(IP string) bool {
 
 	n.Data.lock.Lock()
 	for key, val := range sucMap {
-		if !between(pre.ID, hash(key), n.ID, true) {
+		if between(pre.ID, hash(key), n.ID, true) {
 			n.Data.Map[key] = val
 		}
 	}

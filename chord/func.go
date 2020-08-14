@@ -3,7 +3,6 @@ package chord
 import (
 	"crypto/sha1"
 	"errors"
-	"fmt"
 	"math/big"
 	"net"
 	"net/rpc"
@@ -198,14 +197,11 @@ func (n *Node) LookupKey(key string, val *string) error {
 		if err != nil {
 			return err
 		}
-		err = client.Call("NetNode.LookupKeyBackup", key, val)
-		if err != nil {
-			return err
-		}
+		_ = client.Call("NetNode.LookupKeyBackup", key, val)
 		_ = client.Close()
 	}
 	if *val == "" {
-		fmt.Println("Get() fail: get empty string in map")
+		return errors.New("get failure: get empty string in map")
 	}
 	return nil
 }
@@ -214,9 +210,6 @@ func (n *Node) LookupKeyBackup(key string, val *string) error {
 	n.backup.lock.Lock()
 	*val = n.backup.Map[key]
 	n.backup.lock.Unlock()
-	if *val == "" {
-		fmt.Println("Get() fail: get empty string in backup")
-	}
 	return nil
 }
 
@@ -252,7 +245,7 @@ func (n *Node) JoinSucRemove(suc EdgeType, _ *int) error {
 	n.Data.lock.Lock()
 	var toDel []string
 	for key := range n.Data.Map {
-		if !between(n.Predecessor.ID, hash(key), suc.ID, true) {
+		if between(n.Predecessor.ID, hash(key), suc.ID, true) {
 			toDel = append(toDel, key)
 		}
 	}
@@ -423,27 +416,27 @@ func (n *Node) FixFinger() {
 func (n *Node) CheckPre() {
 	for n.Connected {
 		if n.Predecessor != nil && !n.Ping(n.Predecessor.IP) {
-				n.Predecessor = nil
-				client, err := rpc.Dial("tcp", n.Successors[1].IP)
-				if err != nil {
-					time.Sleep(233 * time.Millisecond)
-					continue
-				}
-				n.Data.lock.Lock()
-				n.backup.lock.Lock()
-				for key, val := range n.backup.Map {
-					n.Data.Map[key] = val
-					if n.IP != n.Successors[1].IP {
-						err = client.Call("NetNode.PutValBackup", KVPair{key, val}, nil)
-						if err != nil {
-							break
-						}
+			n.Predecessor = nil
+			client, err := rpc.Dial("tcp", n.Successors[1].IP)
+			if err != nil {
+				time.Sleep(233 * time.Millisecond)
+				continue
+			}
+			n.Data.lock.Lock()
+			n.backup.lock.Lock()
+			for key, val := range n.backup.Map {
+				n.Data.Map[key] = val
+				if n.IP != n.Successors[1].IP {
+					err = client.Call("NetNode.PutValBackup", KVPair{key, val}, nil)
+					if err != nil {
+						break
 					}
 				}
-				n.backup.Map = make(map[string]string)
-				n.Data.lock.Unlock()
-				n.backup.lock.Unlock()
-				_ = client.Close()
+			}
+			n.backup.Map = make(map[string]string)
+			n.Data.lock.Unlock()
+			n.backup.lock.Unlock()
+			_ = client.Close()
 		}
 		time.Sleep(233 * time.Millisecond)
 	}
