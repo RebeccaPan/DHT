@@ -178,6 +178,7 @@ func (n *Node) InsertVal(req KVPair, done *bool) error {
 	return nil
 }
 func (n *Node) PutValBackup(req KVPair, done *bool) error {
+	*done = false
 	n.backup.lock.Lock()
 	n.backup.Map[req.Key] = req.Val
 	n.backup.lock.Unlock()
@@ -416,7 +417,6 @@ func (n *Node) FixFinger() {
 		}
 		time.Sleep(103 * time.Millisecond)
 	}
-
 }
 
 // go func

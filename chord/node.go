@@ -146,11 +146,8 @@ func (n *Node) Notify(pre *EdgeType, _ *int) error {
 }
 
 func (n *Node) Init(str string) {
-	// All to do when init
 	n.IP = LocAddr() + ":" + str
 	n.ID = hash(n.IP)
-	//n.FingerTable = nil
-	//n.Successors  = nil
 	n.Predecessor = nil
 	n.Data.Map = make(map[string]string)
 	n.backup.Map = make(map[string]string)
@@ -179,7 +176,7 @@ func (n *Node) Put(key, val string) bool {
 			_ = client.Close()
 		}()
 	}
-	if err != nil || client == nil { // Dial failed
+	if err != nil { // Dial failed
 		fmt.Println(err)
 		return false
 	}
@@ -216,6 +213,9 @@ func (n *Node) Get(key string) (bool, string) {
 				done = true
 			}
 		}
+	}
+	if val == "" {
+		return false, ""
 	}
 	if done {
 		return done, val

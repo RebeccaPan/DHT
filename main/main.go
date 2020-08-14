@@ -28,6 +28,8 @@ func init() {
 }
 
 func main() {
+	mainWindow()
+
 	_, _ = yellow.Println("Welcome to DHT-2020 Test Program!\n")
 
 	var basicFailRate float64

@@ -17,11 +17,15 @@ func (n *NetNode) Notify(pre *EdgeType, _ *int) error {return n.Info.Notify(pre,
 
 func (n *NetNode) InsertVal(req KVPair, done *bool) error {return n.Info.InsertVal(req, done)}
 
+func (n *NetNode) PutValBackup(req KVPair, done *bool) error {return n.Info.PutValBackup(req, done)}
+
 func (n *NetNode) LookupKey(key string, val *string) error {return n.Info.LookupKey(key, val)}
 
 func (n *NetNode) LookupKeyBackup(key string, val *string) error {return n.Info.LookupKeyBackup(key, val)}
 
 func (n *NetNode) DeleteKey(key string, _ *int) error {return n.Info.DeleteKey(key, nil)}
+
+func (n *NetNode) DeleteKeyBackup(key string, _ *int) error {return n.Info.DeleteKeyBackup(key, nil)}
 
 func (n *NetNode) JoinSucRemove(suc EdgeType, _ *int) error {return n.Info.JoinSucRemove(suc, nil)}
 
@@ -34,10 +38,6 @@ func (n *NetNode) QuitMoveData(ret *MapWithLock, _ *int) error {return n.Info.Qu
 func (n *NetNode) QuitMoveDataPre(ret *MapWithLock, _ *int) error {return n.Info.QuitMoveDataPre(ret, nil)}
 
 func (n *NetNode) FindSuc(req *FindType, ans *EdgeType) error {return n.Info.FindSuc(req, ans)}
-
-func (n *NetNode) PutValBackup(req KVPair, done *bool) error {return n.Info.PutValBackup(req, done)}
-
-func (n *NetNode) DeleteKeyBackup(key string, _ *int) error {return n.Info.DeleteKeyBackup(key, nil)}
 
 /*
 for reference:
