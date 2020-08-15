@@ -5,6 +5,10 @@ import (
 	"fmt"
 )
 
+const (
+	MaxPortNum = 65540
+)
+
 func HelpInfo() {
 	fmt.Println("- To put a <K, V> pair: [Put key value] e.g. Put ThisIsKeyText ThisIsValueText")
 	fmt.Println("- To get a <K, V> pair: [Get key]       e.g. Get Rouge Info")
@@ -31,15 +35,18 @@ var IP = chord.LocAddr()
 var port = 10000
 var working = true
 var done = false
-var temInt int
+var temInt, nodesCnt int
 var cur dhtNode
+var nodes[MaxPortNum] dhtNode
 
 func mainWindow() {
 	Init()
+	nodes := new([MaxPortNum]dhtNode)
 	cur = NewNode(port)
 	cur.Run()
 	cur.Create()
 	nodeCnt := 1
+	nodes[port] = cur
 	cur.Put("RougeInfo", "Rouge is a platform where you can store all kinds of lovely Rouge things.")
 	cur.Put("LeRougeEtLeNoir", "https://www.bilibili.com/bangumi/play/ep334875?theme=movie")
 	cur.Put("Rouge", "Rouge by RebeccaPan")
@@ -53,12 +60,13 @@ func mainWindow() {
 		case "Port", "port":
 			{
 				_, _ = fmt.Scan(&temInt)
-				if temInt < 0 {
+				if temInt < 0 || temInt >= MaxPortNum {
 					fmt.Println("Port failure: invalid input")
 				} else {
 					port = temInt
-					cur = NewNode(port)
-					cur.Run()
+					cur = nodes[port]
+					//cur = NewNode(port)
+					//cur.Run()
 					fmt.Println("Port success")
 				}
 			}
@@ -104,8 +112,12 @@ func mainWindow() {
 			{
 				_, _ = fmt.Scan(&temInt)
 				if nodeCnt == 0 {
+					cur = NewNode(port)
+					cur.Run()
 					cur.Create()
 				} else {
+					cur = NewNode(port)
+					cur.Run()
 					fmt.Println(portToAddr(IP, temInt))
 					done = cur.Join(portToAddr(IP, temInt))
 				}
