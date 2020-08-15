@@ -3,6 +3,7 @@ package chord
 import (
 	"crypto/sha1"
 	"errors"
+	"fmt"
 	"math/big"
 	"net"
 	"net/rpc"
@@ -94,7 +95,11 @@ func (n *Node) GetDataMap(_ int, ret *map[string]string) error {
 func (n *Node) GetSucList(_ int, ret *[MaxM + 1]EdgeType) error {
 	n.sLock.Lock()
 	for i := 1; i <= MaxM; i++ {
-		(*ret)[i] = EdgeType{n.Successors[i].IP, new(big.Int).Set(n.Successors[i].ID)}
+		if n.Successors[i].ID == nil {
+			fmt.Println("GetSucList failure", n.ID)
+		} else {
+			(*ret)[i] = EdgeType{n.Successors[i].IP, new(big.Int).Set(n.Successors[i].ID)}
+		}
 	}
 	n.sLock.Unlock()
 	return nil
