@@ -56,8 +56,6 @@ func (n *Node) Stabilize() {
 }
 
 func (n *Node) Stabilize_() {
-	//fmt.Println("----Stabilize_: ", n.IP)
-	//defer fmt.Println("---#Stabilize_: ", n.IP)
 	var suc EdgeType
 	suc = n.GetWorkingSuc()
 	if suc.IP == "" {
@@ -88,7 +86,7 @@ func (n *Node) Stabilize_() {
 		_ = client.Close()
 		return
 	}
-	if err == nil && n.Ping(pre.IP) {
+	if pre.IP != "" && n.Ping(pre.IP) {
 		n.sLock.Lock()
 		if between(n.ID, pre.ID, n.Successors[1].ID, false) {
 			n.Successors[1] = pre
@@ -120,8 +118,6 @@ func (n *Node) Stabilize_() {
 }
 
 func (n *Node) Notify(pre *EdgeType, _ *int) error {
-	//fmt.Println("----Notify: ", n.IP)
-	//defer fmt.Println("---#Notify: ", n.IP)
 	if n.Predecessor == nil || between(n.Predecessor.ID, pre.ID, n.ID, false) {
 		n.Predecessor = pre
 		client, err := rpc.Dial("tcp", n.Predecessor.IP)
@@ -257,8 +253,8 @@ func (n *Node) Dump() {
 	} else {
 		fmt.Println("pre:  nil")
 	}
-	//fmt.Println("suc1: ", n.Successors[1].IP, "self < suc1?", n.ID.Cmp(n.Successors[1].ID))
-	//fmt.Println("suc2: ", n.Successors[2].IP, "suc1 < suc2?", n.Successors[1].ID.Cmp(n.Successors[2].ID))
+	fmt.Println("suc1: ", n.Successors[1].IP, "self < suc1?", n.ID.Cmp(n.Successors[1].ID))
+	fmt.Println("suc2: ", n.Successors[2].IP, "suc1 < suc2?", n.Successors[1].ID.Cmp(n.Successors[2].ID))
 	fmt.Println("finger0: ", n.FingerTable[0].IP)
 	fmt.Println("finger1: ", n.FingerTable[1].IP)
 	fmt.Println("is on:", n.Connected)
@@ -340,12 +336,32 @@ func (n *Node) Join(IP string) bool {
 
 func (n *Node) Quit() {
 	_ = n.FixSuc()
+	if n.GetWorkingSuc().IP == n.IP {
+		n.Connected = false
+		return
+	}
+
+	// move all n.data to n.suc.data
+	client, err := rpc.Dial("tcp", n.GetWorkingSuc().IP)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	err = client.Call("NetNode.QuitMoveData", &n.Data, nil)
+	err = client.Call("NetNode.QuitMoveDataPre", &n.Data, nil)
+	if err != nil {
+		fmt.Println(err)
+		_ = client.Close()
+		return
+	}
+	_ = client.Close()
+
 	// fix n.pre.sucList
 	if n.Predecessor == nil {
 		fmt.Println("no pre found")
 		return
 	}
-	client, err := rpc.Dial("tcp", n.Predecessor.IP)
+	client, err = rpc.Dial("tcp", n.Predecessor.IP)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -378,25 +394,6 @@ func (n *Node) Quit() {
 		return
 	}
 	_ = client.Close()
-
-	// move all n.data to n.suc.data
-	client, err = rpc.Dial("tcp", n.GetWorkingSuc().IP)
-	if err == nil {
-		defer func() {
-			_ = client.Close()
-		}()
-	}
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	err = client.Call("NetNode.QuitMoveData", &n.Data, nil)
-	err = client.Call("NetNode.QuitMoveDataPre", &n.Data, nil)
-	if err != nil {
-		fmt.Println(err)
-		_ = client.Close()
-		return
-	}
 
 	n.Connected = false
 }
